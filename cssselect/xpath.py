@@ -979,18 +979,27 @@ class HTMLTranslator(GenericTranslator):
     # Links are never visited, the implementation for :visited is the same
     # as in GenericTranslator
 
-    # An element is a descendant of a disabled fieldset ancestor unless it is
-    # a descendant of that fieldset's own first legend element child. lxml's
-    # XPath evaluator has no generate-id() or current(), so the exemption is
-    # tested by checking whether any ancestor legend is also the first legend
-    # child of a disabled ancestor fieldset; with several nested disabled
-    # fieldsets this can exempt an element that a fully spec-accurate
-    # algorithm would still treat as disabled.
+    # An element is disabled by a disabled fieldset ancestor unless it is a
+    # descendant of that fieldset's own first legend element child. Each
+    # disabled fieldset ancestor is judged independently: the element is
+    # disabled as soon as ANY of them disables it, so a legend exemption on
+    # one nesting level must not exempt the element from the other levels.
+    #
+    # lxml's XPath evaluator has no generate-id() or current(), so the
+    # per-fieldset exemption is expressed with node-set counts. For a
+    # disabled fieldset ancestor F, the element is exempt from F exactly
+    # when F's first legend child is also an ancestor of the element, i.e.
+    # when F/legend[1] belongs to the intersection of
+    # ancestor::fieldset[@disabled]/legend[1] and ancestor::legend. Since
+    # |A| + |B| = |A ∪ B| + |A ∩ B|, the number of exempting fieldsets is
+    # count(A) + count(B) - count(A | B), and the element is disabled when
+    # strictly fewer fieldsets exempt it than there are disabled fieldset
+    # ancestors.
     _disabled_by_fieldset = (
-        "ancestor::fieldset[@disabled] and not("
-        "count(ancestor::legend | ancestor::fieldset[@disabled]/legend[1]) < "
-        "count(ancestor::legend) + count(ancestor::fieldset[@disabled]/legend[1])"
-        ")"
+        "count(ancestor::fieldset[@disabled]) > "
+        "count(ancestor::fieldset[@disabled]/legend[1]) + "
+        "count(ancestor::legend) - "
+        "count(ancestor::fieldset[@disabled]/legend[1] | ancestor::legend)"
     )
 
     def xpath_disabled_pseudo(self, xpath: XPathExpr) -> XPathExpr:

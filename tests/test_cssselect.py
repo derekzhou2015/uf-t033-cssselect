@@ -1856,6 +1856,114 @@ class TestCssselect(unittest.TestCase):
                     element for element in all_elements if element not in matching
                 ]
 
+    def test_select_nested_disabled_fieldsets(self) -> None:
+        """``:disabled``/``:enabled`` judge each fieldset level independently.
+
+        A control is disabled as soon as ANY disabled fieldset ancestor
+        disables it; being inside the first legend of one nesting level only
+        exempts it from that level, not from the others.
+        """
+        document = etree.fromstring(
+            """
+            <html><body>
+              <!-- single disabled fieldset: first-legend exemption -->
+              <fieldset id="fs1" disabled="disabled">
+                <legend><input id="fs1-legend-input" type="checkbox" /></legend>
+                <input id="fs1-input" type="checkbox" />
+              </fieldset>
+              <!-- outer disabled only -->
+              <fieldset id="fs2" disabled="disabled">
+                <fieldset id="fs2-inner">
+                  <legend><input id="fs2-legend-input" type="checkbox" /></legend>
+                  <input id="fs2-input" type="checkbox" />
+                </fieldset>
+              </fieldset>
+              <!-- inner disabled only -->
+              <fieldset id="fs3">
+                <fieldset id="fs3-inner" disabled="disabled">
+                  <legend><input id="fs3-legend-input" type="checkbox" /></legend>
+                  <input id="fs3-input" type="checkbox" />
+                </fieldset>
+                <input id="fs3-outer-input" type="checkbox" />
+              </fieldset>
+              <!-- both levels disabled -->
+              <fieldset id="fs4" disabled="disabled">
+                <fieldset id="fs4-inner" disabled="disabled">
+                  <legend><input id="fs4-legend-input" type="checkbox" /></legend>
+                  <input id="fs4-input" type="checkbox" />
+                </fieldset>
+              </fieldset>
+              <!-- outer disabled, its first legend wraps an inner
+                   disabled fieldset -->
+              <fieldset id="fs5" disabled="disabled">
+                <legend>
+                  <fieldset id="fs5-inner" disabled="disabled">
+                    <input id="fs5-inner-input" type="checkbox" />
+                  </fieldset>
+                  <input id="fs5-legend-input" type="checkbox" />
+                </legend>
+                <input id="fs5-input" type="checkbox" />
+              </fieldset>
+              <!-- three levels, all disabled -->
+              <fieldset id="fs6" disabled="disabled">
+                <fieldset id="fs6-mid" disabled="disabled">
+                  <fieldset id="fs6-inner" disabled="disabled">
+                    <legend><input id="fs6-legend-input" type="checkbox" /></legend>
+                  </fieldset>
+                </fieldset>
+              </fieldset>
+              <!-- no disabled fieldset at all -->
+              <fieldset id="fs7">
+                <legend><input id="fs7-legend-input" type="checkbox" /></legend>
+                <input id="fs7-input" type="checkbox" />
+              </fieldset>
+            </body></html>
+            """
+        )
+        css_to_xpath = HTMLTranslator().css_to_xpath
+
+        def select_ids(css: str) -> set[str]:
+            xpath = css_to_xpath(css)
+            items = typing.cast("list[etree._Element]", document.xpath(xpath))
+            return {element.get("id") for element in items}
+
+        assert select_ids(":disabled") == {
+            # fieldsets carrying their own disabled attribute
+            "fs1",
+            "fs2",
+            "fs3-inner",
+            "fs4",
+            "fs4-inner",
+            "fs5",
+            "fs5-inner",
+            "fs6",
+            "fs6-mid",
+            "fs6-inner",
+            # controls disabled by a disabled fieldset ancestor
+            "fs1-input",
+            "fs2-legend-input",
+            "fs2-input",
+            "fs3-input",
+            "fs4-legend-input",
+            "fs4-input",
+            "fs5-inner-input",
+            "fs5-input",
+            "fs6-legend-input",
+        }
+        assert select_ids(":enabled") == {
+            # fieldsets without their own disabled attribute
+            "fs2-inner",
+            "fs3",
+            "fs7",
+            # controls exempt from every disabled fieldset ancestor
+            "fs1-legend-input",
+            "fs3-legend-input",
+            "fs3-outer-input",
+            "fs5-legend-input",
+            "fs7-legend-input",
+            "fs7-input",
+        }
+
     def test_select_long_selector_list(self) -> None:
         """A selector list is joined in a single ``or`` chain.
 
